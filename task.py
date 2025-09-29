@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 # Task Types
 # -----------------------------
 class TaskType(str, Enum):
-    SOURCE = "DEFAULT"
+    DEFAULT = "DEFAULT"
 
 
 # -----------------------------
