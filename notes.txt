@@ -1,0 +1,35 @@
+Workflow Orchestration Engine
+Key components:
+- Developers: create the actual py file workflows to run
+- End Users: Run the workflow
+- Engine: execution enviornment that makes things run
+
+Definitions:
+- Task is unit of Work
+- Workflow is a collection of Tasks with dependencies between them
+    - DAG
+    - Can be static (predefined) or dynamic (spawn other tasks)
+        - Dynamic should decide the next task at the last possible moment in the preceding task
+
+Map-Reduce Task: dynamically spawns copies of itself to apply onto a list of inputs and reduces the outputs into a single result
+Branching Task: Conditional spawning of other tasks based on results of the output
+- needs to be able to do things like 1 and exactly one gets executed
+- Ideally we want to execute unrestricted Python conditions
+
+
+- Workflow developers should be allowed to define constraints. i.e.
+    - No new nodes are created
+    - No new edges are created
+    - Only specific edges can be created
+    - Only specific nodes can be created
+    - No edges can be created starting at node A
+    - No edges can be created ending at node B
+
+Prioritize the User Experience, then the Developer Experience.
+
+
+End product:
+Be able to define a py file that has a collection of tasks that are dynamic and do various work
+
+
+
