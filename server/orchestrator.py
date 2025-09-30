@@ -1,6 +1,7 @@
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 from collections import defaultdict, deque
-from client.workflow import Workflow, TaskSpec  # In practice would be getting Workflow info via serialized instead of importing client 
+from client.workflow import Workflow
+from wf_types import TaskSpec
 from func_registry import get as registry_get  # In practice would be done through a DB
 
 class DependencyResolver:
@@ -36,18 +37,14 @@ class Scheduler:
         return self.q.popleft() if self.q else None
 
 class Executor:
-    def execute(self, func_ref: str, ctx: dict, params: Dict[str, Any]):
+    def execute(self, func_ref: str):
         fn = registry_get(func_ref)
-        return fn(ctx, **params)
+        return fn()
 
 class Orchestrator:
-    def run(self, workflow: Workflow, initial_ctx: Optional[dict] = None) -> dict:
+    def run(self, workflow: Workflow) -> Dict[str, str]:
         resolver = DependencyResolver(workflow)
         sched, exec_ = Scheduler(), Executor()
-
-        ctx: Dict[str, Any] = dict(initial_ctx or {})
-        ctx.setdefault("by_uuid", {})
-        ctx.setdefault("by_name", defaultdict(list))
 
         indegree = dict(resolver.indegree)
         done: Dict[str, str] = {}
@@ -60,23 +57,19 @@ class Orchestrator:
                 if len(done) == len(resolver.tasks()):
                     break
                 pending = [t for t in resolver.tasks() if t.task_id not in done]
-                raise RuntimeError(f"Deadlock or cycle: {[p.name for p in pending]}")
+                raise RuntimeError(f"Deadlock or cycle: {[t.func_ref for t in pending]}")
 
             t = resolver.task_of(tid)
             try:
-                out = exec_.execute(t.func_ref, ctx, t.params)
-                ctx["by_uuid"][tid] = out
-                ctx["by_name"][t.name].append(out)
-                ctx[f"task:{tid}:result"] = out
+                exec_.execute(t.func_ref)
                 done[tid] = "SUCCESS"
             except Exception as e:
                 done[tid] = "FAILED"
-                raise RuntimeError(f"Task {t.name} failed: {e}") from e
+                raise RuntimeError(f"Task {t.func_ref} failed: {e}") from e
 
             for succ in resolver.successors(tid):
                 indegree[succ] -= 1
                 if indegree[succ] == 0:
                     sched.add_ready([succ])
 
-        ctx["task_state"] = done
-        return ctx
+        return done
