@@ -7,7 +7,7 @@ wf = Workflow("branching_demo")
 def load(ctx):
     print("LOADING DATA")
 
-def evaluate(ctx):
+def evaluate_high_or_low(ctx):
     """Branching task that decides which path to take"""
     value = random.randint(1, 20)
     print(f"EVALUATING: value = {value}")
@@ -19,6 +19,17 @@ def evaluate(ctx):
         print("  -> Taking LOW branch")
         ctx.spawn_branch("low")
 
+def evaluate_low_maybe_high(ctx):
+    """Branching task that decides which path to take"""
+    value = random.randint(1, 20)
+    print(f"EVALUATING: value = {value}")
+
+    if value > 10:
+        print("  -> Taking HIGH branch")
+        ctx.spawn_branch("high")
+    print("  -> Taking LOW branch")
+    ctx.spawn_branch("low")
+
 def process_high(ctx):
     print("PROCESSING HIGH VALUE")
 
@@ -28,16 +39,18 @@ def process_low(ctx):
 # Build workflow
 t_load = wf.task(load)
 t_load_2 = wf.task(load)
-t_eval = wf.task(evaluate)
+# t_eval_high_or_low = wf.task(evaluate_high_or_low)
+t_eval_low_maybe_high = wf.task(evaluate_low_maybe_high)  # if using a ctx.spawn_branch must be a branching task
 t_high = wf.task(process_high)
 t_low = wf.task(process_low)
 
 # Static dependencies
-wf.link(t_load, t_eval)
-wf.link(t_low, t_load_2)
+wf.link(t_load, t_eval_low_maybe_high)
+wf.link(t_low, t_load_2)  # running t_load_2 only when there is LOW value
+wf.link(t_high, t_load_2) # checks that t_low and t_high have to complete before going into t_load_2
 
 # Dynamic branching - eval can spawn either high or low at runtime
-wf.branching(t_eval, {"high": t_high, "low": t_low})
+wf.branching(t_eval_low_maybe_high, {"high": t_high, "low": t_low})
 
 print("=== Running Branching Workflow ===")
 result = Orchestrator().run(wf)

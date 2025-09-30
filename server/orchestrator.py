@@ -59,7 +59,7 @@ class DependencyResolver:
             if t.dynamic_spawns:
                 dynamic_only.update(t.dynamic_spawns.values())
 
-        # Transitive: tasks whose ALL dependencies are dynamic-only
+        # Transitive: tasks whose ALL dependencies are dynamic
         changed = True
         while changed:
             changed = False
@@ -127,6 +127,7 @@ class Orchestrator:
         """
         if new_task_id in self.done:
             # Task already executed, skip
+            print(self.resolver.task_index[new_task_id], "has already been executed. Skipping")
             return
 
         # Check if task has dependencies that aren't met
