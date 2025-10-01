@@ -1,7 +1,7 @@
 import uuid
 from typing import Dict, Callable, List, Optional
 from wf_types import TaskSpec, Constraint
-from func_registry import register
+from func_registry import register, has
 
 class Workflow:
     def __init__(self, name: str = "Workflow"):
@@ -38,14 +38,13 @@ class Workflow:
             constraints = []
 
         if possible_branches is None:
-            # Regular task - wrap to hide ctx
+            # Static task - wrap to hide ctx
             task_id = str(uuid.uuid4())
 
             # Only register wrapper if not already registered
-            from func_registry import has
             if not has(fn.__name__):
                 user_fn = fn
-                def wrapper(ctx):
+                def wrapper(_):  # _ == ctx which is unused in static
                     return user_fn()
                 register(fn.__name__, wrapper)
 
