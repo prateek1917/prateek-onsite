@@ -4,7 +4,7 @@ import random
 
 wf = Workflow("branching_demo")
 
-def load(ctx):
+def load():
     print("LOADING DATA")
 
 def evaluate_high_or_low():
@@ -31,28 +31,42 @@ def evaluate_low_maybe_high():
     print("  -> Taking LOW branch")
     return results
 
-def process_high(ctx):
+def process_high():
     print("PROCESSING HIGH VALUE")
 
-def process_low(ctx):
+def process_low():
     print("PROCESSING LOW VALUE")
 
 # Build workflow
 t_load = wf.task(load)
 t_load_2 = wf.task(load)
 
-# Dynamic task - possible_branches are auto-registered
-t_eval_low_maybe_high = wf.task(evaluate_low_maybe_high, possible_branches=[process_high, process_low])
+# Example 1: Branching task - returns exactly ONE branch
+print("=== Example 1: Branching Task (exactly one) ===")
+t_eval_one = wf.branched_task(evaluate_high_or_low, [process_high, process_low])
+t_high_1 = wf.get_task(process_high)
+t_low_1 = wf.get_task(process_low)
 
-# Get task IDs for the branches (auto-created by dynamic task)
-t_high = wf.get_task(process_high)
-t_low = wf.get_task(process_low)
+wf.link(t_load, t_eval_one)
+wf.link(t_high_1, t_load_2)
+wf.link(t_low_1, t_load_2)
 
-# Static dependencies
-wf.link(t_load, t_eval_low_maybe_high)
-wf.link(t_low, t_load_2)  # t_load_2 waits for low branch
-wf.link(t_high, t_load_2)  # t_load_2 waits for high branch
-
-print("=== Running Branching Workflow ===")
 result = Orchestrator().run(wf)
 print("\nWorkflow execution result:", result)
+
+# Example 2: Dynamic task - can return multiple branches
+print("\n\n=== Example 2: Dynamic Task (can return multiple) ===")
+wf2 = Workflow("dynamic_demo")
+t_load2 = wf2.task(load)
+t_load_2_2 = wf2.task(load)
+
+t_eval_multi = wf2.task(evaluate_low_maybe_high, possible_branches=[process_high, process_low])
+t_high_2 = wf2.get_task(process_high)
+t_low_2 = wf2.get_task(process_low)
+
+wf2.link(t_load2, t_eval_multi)
+wf2.link(t_low_2, t_load_2_2)
+wf2.link(t_high_2, t_load_2_2)
+
+result2 = Orchestrator().run(wf2)
+print("\nWorkflow execution result:", result2)
