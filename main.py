@@ -70,3 +70,23 @@ wf2.link(t_high_2, t_load_2_2)
 
 result2 = Orchestrator().run(wf2)
 print("\nWorkflow execution result:", result2)
+
+# Example 3: Map-Reduce pattern
+print("\n\n=== Example 3: Map-Reduce ===")
+wf3 = Workflow("map_reduce_demo")
+
+def mapper():
+    print("  MAPPER executing")
+
+def reducer():
+    print("REDUCER executing")
+
+t_start = wf3.task(load)
+t_reducer = wf3.map_reduce(mapper, reducer, count=3)
+t_end = wf3.task(load)
+
+wf3.link(t_start, t_reducer)
+wf3.link(t_reducer, t_end)
+
+result3 = Orchestrator().run(wf3)
+print("\nWorkflow execution result:", result3)

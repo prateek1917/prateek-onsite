@@ -148,5 +148,39 @@ class Workflow:
         )
         return task_id
 
-    def map_reduce(self, mapper_task_id: str, reducer_task_id: str, input_data: List):
-        pass
+    def map_reduce(self, mapper: Callable, reducer: Callable, count: int) -> str:
+        """
+        Create map-reduce pattern: N identical mapper tasks → 1 reducer task
+
+        Args:
+            mapper: Function executed count times in parallel
+            reducer: Function executed after all mappers complete
+            count: Number of mapper instances
+
+        Returns:
+            task_id of reducer (for linking downstream tasks)
+
+        Example:
+            def mapper():
+                print("MAPPING")
+
+            def reducer():
+                print("REDUCING")
+
+            reducer_id = wf.map_reduce(mapper, reducer, count=5)
+            # Creates 5 parallel mapper tasks, then 1 reducer
+        """
+        # Create count mapper tasks
+        mapper_ids = []
+        for i in range(count):
+            mapper_id = self.task(mapper)
+            mapper_ids.append(mapper_id)
+
+        # Create reducer task
+        reducer_id = self.task(reducer)
+
+        # Link all mappers → reducer
+        for mapper_id in mapper_ids:
+            self.link(mapper_id, reducer_id)
+
+        return reducer_id
