@@ -53,8 +53,6 @@ def reducer():
 t_load = wf.task(load)
 t_load_2 = wf.task(lambda : print("LOADING DATA 2"))
 
-# Example 1: Branching task - returns exactly ONE branch
-print("=== Example 1: Branching Task (exactly one) ===")
 t_eval_one = wf.branched_task(evaluate_high_or_low, [process_high, process_low])
 t_high_1 = wf.get_task(process_high)
 t_low_1 = wf.get_task(process_low)
@@ -69,6 +67,10 @@ wf.link(t_low_1, t_eval_maybe)
 
 t_mr = wf.map_reduce(mapper, reducer, count=3)
 wf.link(t_high_2, t_mr)
+
+print("\nGenerating workflow visualization...")
+wf.visualize(filename="workflow_dag", view=False)
+print("Saved to: workflow_dag.png\n")
 
 result = Orchestrator().run(wf)
 print("\nWorkflow execution result:", result)

@@ -203,4 +203,67 @@ class Workflow:
         for mapper_id in mapper_ids:
             self.link(mapper_id, reducer_id)
 
-        return mapper_initiator_id 
+        return mapper_initiator_id
+
+    def visualize(self, filename: str = "workflow", view: bool = False):
+        """
+        Generate a graphviz visualization of the workflow DAG.
+
+        Args:
+            filename: Output filename (without extension)
+            view: If True, open the generated image automatically
+
+        Returns:
+            graphviz.Digraph object
+
+        Notes:
+            - Solid edges: static dependencies
+            - Dotted edges: dynamic branches (conditionally spawned at runtime)
+            - Tasks in dynamic_spawns are marked with "(dynamic)" label
+        """
+        try:
+            import graphviz
+        except ImportError:
+            raise ImportError("graphviz package required. Install with: pip install graphviz")
+
+        # Collect all dynamically spawned task IDs
+        dynamic_task_ids: Set[str] = set()
+        for task in self._tasks.values():
+            if task.dynamic_spawns:
+                dynamic_task_ids.update(task.dynamic_spawns.values())
+
+        # Create directed graph
+        dot = graphviz.Digraph(comment=self.name)
+        dot.attr(rankdir='TB')  # Top to bottom layout
+
+        # Add nodes
+        for task_id, task in self._tasks.items():
+            label = task.func_ref
+            if task_id in dynamic_task_ids:
+                label += "\n(dynamic)"
+
+            # Style dynamic tasks differently
+            if task_id in dynamic_task_ids:
+                dot.node(task_id, label, shape='box', style='rounded,dashed', color='blue')
+            elif task.dynamic_spawns:
+                # Task that spawns dynamic branches
+                dot.node(task_id, label, shape='diamond', style='filled', fillcolor='lightblue')
+            else:
+                dot.node(task_id, label, shape='box', style='rounded')
+
+        # Add edges
+        for task_id, task in self._tasks.items():
+            # 1. Draw solid edges for regular dependencies (compile-time)
+            for dep_id in task.deps:
+                dot.edge(dep_id, task_id)
+
+            # 2. Draw dotted edges for dynamic spawns (runtime-conditional)
+            if task.dynamic_spawns:
+                for spawn_label, spawn_id in task.dynamic_spawns.items():
+                    dot.edge(task_id, spawn_id, style='dotted', color='blue',
+                            label=spawn_label)
+
+        # Render to file
+        dot.render(filename, format='png', cleanup=True, view=view)
+
+        return dot 
