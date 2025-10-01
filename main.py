@@ -24,10 +24,10 @@ def evaluate_low_maybe_high():
     value = random.randint(1, 20)
     print(f"EVALUATING: value = {value}")
 
-    results = [process_low]  # Always spawn low
+    results = [process_low2]  # Always spawn low
     if value > 10:
         print("  -> Also taking HIGH branch")
-        results.append(process_high)
+        results.append(process_high2)
     print("  -> Taking LOW branch")
     return results
 
@@ -37,27 +37,11 @@ def process_high():
 def process_low():
     print("PROCESSING LOW VALUE")
 
-# Build workflow
-t_load = wf.task(load)
-t_load_2 = wf.task(load)
+def process_high2():
+    print("PROCESSING HIGH VALUE 2")
 
-# Example 1: Branching task - returns exactly ONE branch
-print("=== Example 1: Branching Task (exactly one) ===")
-t_eval_one = wf.task(evaluate_low_maybe_high, [process_high, process_low])
-t_high_1 = wf.get_task(process_high)
-t_low_1 = wf.get_task(process_low)
-
-wf.link(t_load, t_eval_one)
-wf.link(t_high_1, t_load_2)
-wf.link(t_low_1, t_load_2)
-
-result = Orchestrator().run(wf)
-print("\nWorkflow execution result:", result)
-
-# Example 3: Map-Reduce pattern
-"""
-print("\n\n=== Example 3: Map-Reduce ===")
-wf3 = Workflow("map_reduce_demo")
+def process_low2():
+    print("PROCESSING LOW VALUE 2")
 
 def mapper():
     print("  MAPPER executing")
@@ -65,14 +49,26 @@ def mapper():
 def reducer():
     print("REDUCER executing")
 
-t_start = wf3.task(load)
-t_reducer = wf3.map_reduce(mapper, reducer, count=3)
-t_end = wf3.task(load)
+# Build workflow
+t_load = wf.task(load)
+t_load_2 = wf.task(lambda : print("LOADING DATA 2"))
 
-wf3.link(t_start, t_reducer)
-wf3.link(t_reducer, t_end)
+# Example 1: Branching task - returns exactly ONE branch
+print("=== Example 1: Branching Task (exactly one) ===")
+t_eval_one = wf.branched_task(evaluate_high_or_low, [process_high, process_low])
+t_high_1 = wf.get_task(process_high)
+t_low_1 = wf.get_task(process_low)
 
-result3 = Orchestrator().run(wf3)
-print("\nWorkflow execution result:", result3)
+t_eval_maybe = wf.task(evaluate_low_maybe_high, [process_high2, process_low2])
+t_high_2 = wf.get_task(process_high2)
+t_low_2 = wf.get_task(process_low2)
 
-"""
+wf.link(t_load, t_eval_one)
+wf.link(t_high_1, t_load_2)
+wf.link(t_low_1, t_eval_maybe)
+
+t_mr = wf.map_reduce(mapper, reducer, count=3)
+wf.link(t_high_2, t_mr)
+
+result = Orchestrator().run(wf)
+print("\nWorkflow execution result:", result)

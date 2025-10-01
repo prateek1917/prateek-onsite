@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict, Callable, List, Optional
+from typing import Dict, Callable, List, Optional, Set
 from wf_types import TaskSpec, Constraint, StaticConstraint, NoOutgoingEdgesConstraint, NoIncomingEdgesConstraint
 from func_registry import register, has
 
@@ -164,7 +164,7 @@ class Workflow:
 
     def map_reduce(self, mapper: Callable, reducer: Callable, count: int) -> str:
         """
-        Create map-reduce pattern: N identical mapper tasks → 1 reducer task
+        Create map-reduce pattern: mapper_initiator → N mappers → 1 reducer
 
         Args:
             mapper: Function executed count times in parallel
@@ -172,7 +172,7 @@ class Workflow:
             count: Number of mapper instances
 
         Returns:
-            task_id of reducer (for linking downstream tasks)
+            task_id of mapper_initiator (entry point for linking upstream tasks)
 
         Example:
             def mapper():
@@ -181,14 +181,20 @@ class Workflow:
             def reducer():
                 print("REDUCING")
 
-            reducer_id = wf.map_reduce(mapper, reducer, count=5)
-            # Creates 5 parallel mapper tasks, then 1 reducer
+            mr_id = wf.map_reduce(mapper, reducer, count=5)
+            # Creates: mapper_initiator → 5 parallel mappers → 1 reducer
+            wf.link(upstream_task, mr_id)  # Links to mapper_initiator
         """
+        # Create mapper initiator (no-op entry point)
+        mapper_initiator_id = self.task(lambda: None)
+
         # Create count mapper tasks
         mapper_ids = []
         for i in range(count):
             mapper_id = self.task(mapper)
             mapper_ids.append(mapper_id)
+            # Link mapper_initiator → mapper
+            self.link(mapper_initiator_id, mapper_id)
 
         # Create reducer task
         reducer_id = self.task(reducer)
@@ -197,4 +203,4 @@ class Workflow:
         for mapper_id in mapper_ids:
             self.link(mapper_id, reducer_id)
 
-        return reducer_id
+        return mapper_initiator_id 

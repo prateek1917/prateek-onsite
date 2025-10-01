@@ -274,7 +274,7 @@ class Orchestrator:
                 exec_.execute(t.func_ref, ctx)
                 self.done[tid] = "SUCCESS"
                 # If this task could spawn other tasks, register its branches for execution
-                if t.dynamic_spawns:
+                if t.dynamic_spawns:  # enforces that branches have to be defined
                     self._register_branches_for_execution(ctx)
             except Exception as e:
                 self.done[tid] = "FAILED"
