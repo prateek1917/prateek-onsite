@@ -244,13 +244,14 @@ class Orchestrator:
 
         self.sched.add_ready(self.resolver.initial_ready())
 
+        # TOPO SORT
         while True:
             tid = self.sched.next()
             if tid is None:
                 # Check if we're truly done
                 pending = [t for t in self.resolver.tasks() if t.task_id not in self.done]
 
-                # Filter out tasks that were never spawned (dynamic only tasks)
+                # Filter out tasks that were never registered (unused dynamic tasks)
                 pending_non_dynamic = [
                     t for t in pending
                     if t.task_id not in self.resolver.dynamic_only_tasks
@@ -263,29 +264,37 @@ class Orchestrator:
                 raise RuntimeError(f"Deadlock or cycle: {[t.func_ref for t in pending_non_dynamic]}")
 
             t = self.resolver.task_of(tid)
-            ctx = ExecutionContext(self, tid, t)
+            ctx = ExecutionContext(self, tid, t)  # set up context which can be called back
 
-            # Validate constraints before execution
+            # Validate constraints before execution each iteration
             validator = ConstraintValidator(self.resolver)
             validator.validate_before_execution(t)
 
             try:
                 exec_.execute(t.func_ref, ctx)
                 self.done[tid] = "SUCCESS"
-
-                # If this is a dynamic task, register its branches for execution
-                if t.dynamic_spawns is not None:
+                # If this task could spawn other tasks, register its branches for execution
+                if t.dynamic_spawns:
                     self._register_branches_for_execution(ctx)
-
             except Exception as e:
                 self.done[tid] = "FAILED"
                 raise RuntimeError(f"Task {t.func_ref} failed: {e}") from e
 
             for succ in self.resolver.successors(tid):
-                # Skip if successor has infinite indegree (blocked branch)
-                if self.indegree[succ] == float('inf'):
-                    print(self.resolver.task_index[succ])
-                    continue
+                # Special case where successor is now unblocked
+                if self.indegree[succ] == float('inf'):  
+                    # Check if ALL dependencies of this blocked task are now unblocked or done
+                    succ_task = self.resolver.task_of(succ)
+                    all_deps_ready = all(
+                        dep in self.done or self.indegree[dep] != float('inf')
+                        for dep in succ_task.deps
+                    )  # if all dependencies are done or have indegrees meaning has been registered 
+
+                    if all_deps_ready:
+                        # All dependencies are unblocked/done, restore actual indegree
+                        self.indegree[succ] = self.blocked_branches[succ]
+
+                # Normal continue on topo sort 
                 self.indegree[succ] -= 1
                 if self.indegree[succ] == 0:
                     self.sched.add_ready([succ])
