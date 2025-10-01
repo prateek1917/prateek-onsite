@@ -43,7 +43,7 @@ t_load_2 = wf.task(load)
 
 # Example 1: Branching task - returns exactly ONE branch
 print("=== Example 1: Branching Task (exactly one) ===")
-t_eval_one = wf.branched_task(evaluate_high_or_low, [process_high, process_low])
+t_eval_one = wf.task(evaluate_low_maybe_high, [process_high, process_low])
 t_high_1 = wf.get_task(process_high)
 t_low_1 = wf.get_task(process_low)
 
@@ -54,24 +54,8 @@ wf.link(t_low_1, t_load_2)
 result = Orchestrator().run(wf)
 print("\nWorkflow execution result:", result)
 
-# Example 2: Dynamic task - can return multiple branches
-print("\n\n=== Example 2: Dynamic Task (can return multiple) ===")
-wf2 = Workflow("dynamic_demo")
-t_load2 = wf2.task(load)
-t_load_2_2 = wf2.task(load)
-
-t_eval_multi = wf2.task(evaluate_low_maybe_high, possible_branches=[process_high, process_low])
-t_high_2 = wf2.get_task(process_high)
-t_low_2 = wf2.get_task(process_low)
-
-wf2.link(t_load2, t_eval_multi)
-wf2.link(t_low_2, t_load_2_2)
-wf2.link(t_high_2, t_load_2_2)
-
-result2 = Orchestrator().run(wf2)
-print("\nWorkflow execution result:", result2)
-
 # Example 3: Map-Reduce pattern
+"""
 print("\n\n=== Example 3: Map-Reduce ===")
 wf3 = Workflow("map_reduce_demo")
 
@@ -90,3 +74,5 @@ wf3.link(t_reducer, t_end)
 
 result3 = Orchestrator().run(wf3)
 print("\nWorkflow execution result:", result3)
+
+"""

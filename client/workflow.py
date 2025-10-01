@@ -1,8 +1,7 @@
 import uuid
 from typing import Dict, Callable, List, Optional
-from wf_types import TaskSpec, Constraint
+from wf_types import TaskSpec, Constraint, StaticConstraint, NoOutgoingEdgesConstraint, NoIncomingEdgesConstraint
 from func_registry import register, has
-from server.orchestrator import ExecutionContext
 
 class Workflow:
     def __init__(self, name: str = "Workflow"):
@@ -134,7 +133,7 @@ class Workflow:
         # Wrapper that calls user function and registers branches
         user_fn = fn
         is_branching = branching
-        def wrapper(ctx: ExecutionContext):
+        def wrapper(ctx):
             result = user_fn()
             # Handle both single function and list of functions
             to_register = result if isinstance(result, list) else [result]

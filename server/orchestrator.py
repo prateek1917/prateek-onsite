@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Any
 from collections import defaultdict, deque
 from client.workflow import Workflow  # in practice would be serialized and sent over proto
-from wf_types import TaskSpec, Constraint
+from wf_types import TaskSpec, StaticConstraint, NoOutgoingEdgesConstraint, NoIncomingEdgesConstraint
 from func_registry import get as registry_get  # In practice would be done through a DB
 
 
@@ -119,6 +119,9 @@ class Executor:
 class ConstraintValidator:
     """Validates task constraints before execution"""
 
+    def __init__(self, resolver: 'DependencyResolver'):
+        self.resolver = resolver
+
     def validate_before_execution(self, task: TaskSpec):
         """
         Validate all constraints on a task before it executes.
@@ -130,8 +133,12 @@ class ConstraintValidator:
             RuntimeError: If any constraint is violated
         """
         for constraint in task.constraints:
-            if constraint == Constraint.STATIC:
+            if isinstance(constraint, StaticConstraint):
                 self._validate_static(task)
+            elif isinstance(constraint, NoOutgoingEdgesConstraint):
+                self._validate_no_outgoing_edges(task)
+            elif isinstance(constraint, NoIncomingEdgesConstraint):
+                self._validate_no_incoming_edges(task)
 
     def _validate_static(self, task: TaskSpec):
         """
@@ -147,6 +154,41 @@ class ConstraintValidator:
             raise RuntimeError(
                 f"Constraint violation: Task '{task.func_ref}' has STATIC constraint "
                 f"but is a dynamic task"
+            )
+
+    def _validate_no_outgoing_edges(self, task: TaskSpec):
+        """
+        Validate NO_OUTGOING_EDGES constraint: task cannot have successors.
+
+        Args:
+            task: TaskSpec to validate
+
+        Raises:
+            RuntimeError: If task has any successors
+        """
+        successors = self.resolver.successors(task.task_id)
+        if successors:
+            successor_names = [self.resolver.task_of(sid).func_ref for sid in successors]
+            raise RuntimeError(
+                f"Constraint violation: Task '{task.func_ref}' has NO_OUTGOING_EDGES constraint "
+                f"but has outgoing edges to: {successor_names}"
+            )
+
+    def _validate_no_incoming_edges(self, task: TaskSpec):
+        """
+        Validate NO_INCOMING_EDGES constraint: task cannot have dependencies.
+
+        Args:
+            task: TaskSpec to validate
+
+        Raises:
+            RuntimeError: If task has any dependencies
+        """
+        if task.deps:
+            dep_names = [self.resolver.task_of(dep_id).func_ref for dep_id in task.deps]
+            raise RuntimeError(
+                f"Constraint violation: Task '{task.func_ref}' has NO_INCOMING_EDGES constraint "
+                f"but has incoming edges from: {dep_names}"
             )
 
 
@@ -224,7 +266,7 @@ class Orchestrator:
             ctx = ExecutionContext(self, tid, t)
 
             # Validate constraints before execution
-            validator = ConstraintValidator()
+            validator = ConstraintValidator(self.resolver)
             validator.validate_before_execution(t)
 
             try:
@@ -242,6 +284,7 @@ class Orchestrator:
             for succ in self.resolver.successors(tid):
                 # Skip if successor has infinite indegree (blocked branch)
                 if self.indegree[succ] == float('inf'):
+                    print(self.resolver.task_index[succ])
                     continue
                 self.indegree[succ] -= 1
                 if self.indegree[succ] == 0:
