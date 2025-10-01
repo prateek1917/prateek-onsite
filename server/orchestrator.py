@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Any
 from collections import defaultdict, deque
 from client.workflow import Workflow  # in practice would be serialized and sent over proto
-from wf_types import TaskSpec
+from wf_types import TaskSpec, Constraint
 from func_registry import get as registry_get  # In practice would be done through a DB
 
 
@@ -116,6 +116,40 @@ class Executor:
         return fn(ctx)
 
 
+class ConstraintValidator:
+    """Validates task constraints before execution"""
+
+    def validate_before_execution(self, task: TaskSpec):
+        """
+        Validate all constraints on a task before it executes.
+
+        Args:
+            task: TaskSpec to validate
+
+        Raises:
+            RuntimeError: If any constraint is violated
+        """
+        for constraint in task.constraints:
+            if constraint == Constraint.STATIC:
+                self._validate_static(task)
+
+    def _validate_static(self, task: TaskSpec):
+        """
+        Validate STATIC constraint: task cannot be a dynamic task.
+
+        Args:
+            task: TaskSpec to validate
+
+        Raises:
+            RuntimeError: If task has dynamic_spawns
+        """
+        if task.dynamic_spawns is not None:
+            raise RuntimeError(
+                f"Constraint violation: Task '{task.func_ref}' has STATIC constraint "
+                f"but is a dynamic task"
+            )
+
+
 class Orchestrator:
     def __init__(self):
         self.resolver: Optional[DependencyResolver] = None
@@ -188,6 +222,10 @@ class Orchestrator:
 
             t = self.resolver.task_of(tid)
             ctx = ExecutionContext(self, tid, t)
+
+            # Validate constraints before execution
+            validator = ConstraintValidator()
+            validator.validate_before_execution(t)
 
             try:
                 exec_.execute(t.func_ref, ctx)

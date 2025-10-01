@@ -1,6 +1,6 @@
 import uuid
 from typing import Dict, Callable, List, Optional
-from wf_types import TaskSpec
+from wf_types import TaskSpec, Constraint
 from func_registry import register
 
 class Workflow:
@@ -8,7 +8,9 @@ class Workflow:
         self.name = name
         self._tasks: Dict[str, TaskSpec] = {}
 
-    def task(self, fn: Callable, possible_branches: Optional[List[Callable]] = None) -> str:
+    def task(self, fn: Callable,
+             possible_branches: Optional[List[Callable]] = None,
+             constraints: Optional[List[Constraint]] = None) -> str:
         """
         Register a task. Can be static or dynamic based on possible_branches.
 
@@ -17,6 +19,7 @@ class Workflow:
             possible_branches: Optional list of functions that can be registered at runtime.
                               If None, this is a regular task.
                               If provided, fn should return Callable or List[Callable].
+            constraints: Optional list of constraints to validate at runtime.
 
         Returns:
             task_id
@@ -25,9 +28,15 @@ class Workflow:
             # static task
             t_load = wf.task(load)
 
+            # Static task with STATIC constraint
+            t_load = wf.task(load, constraints=[Constraint.STATIC])
+
             # Dynamic task (branching)
             t_eval = wf.task(evaluate, possible_branches=[process_high, process_low])
         """
+        if constraints is None:
+            constraints = []
+
         if possible_branches is None:
             # Regular task - wrap to hide ctx
             task_id = str(uuid.uuid4())
@@ -43,12 +52,13 @@ class Workflow:
             self._tasks[task_id] = TaskSpec(
                 task_id=task_id,
                 func_ref=fn.__name__,
-                deps=[]
+                deps=[],
+                constraints=constraints
             )
             return task_id
         else:
             # Dynamic task
-            return self._create_dynamic_task(fn, possible_branches)
+            return self._create_dynamic_task(fn, possible_branches, constraints=constraints)
 
     def link(self, upstream_id: str, downstream_id: str):
         """
@@ -93,14 +103,18 @@ class Workflow:
                 return tid
         return None
 
-    def _create_dynamic_task(self, fn: Callable, possible_branches: List[Callable], branching: bool = False) -> str:
+    def _create_dynamic_task(self, fn: Callable, possible_branches: List[Callable],
+                             branching: bool = False, constraints: Optional[List[Constraint]] = None) -> str:
         """Internal: Create a task that dynamically spawns other tasks
 
         Args:
             fn: User function to execute
             possible_branches: List of possible branch functions
             branching: If True, enforce exactly one branch returned
+            constraints: Optional list of constraints to validate at runtime
         """
+        if constraints is None:
+            constraints = []
         # Register all possible branch tasks
         branch_map = {}
         for branch_fn in possible_branches:
@@ -144,7 +158,8 @@ class Workflow:
             task_id=task_id,
             func_ref=fn.__name__,
             deps=[],
-            dynamic_spawns=branch_map
+            dynamic_spawns=branch_map,
+            constraints=constraints
         )
         return task_id
 
