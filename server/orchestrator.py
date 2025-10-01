@@ -6,31 +6,37 @@ from func_registry import get as registry_get  # In practice would be done throu
 
 
 class ExecutionContext:
-    """Context passed to tasks to allow dynamic tasks at runtime"""
+    """Context passed to tasks to register which branches should execute at runtime"""
 
     def __init__(self, orchestrator: 'Orchestrator', current_task_id: str, task_spec: TaskSpec):
         self._orchestrator = orchestrator
         self._current_task_id = current_task_id
         self._task_spec = task_spec
+        self._registered_branches: List[str] = []
 
-    def spawn_branch(self, label: str):
+    def register_branches(self, branch_labels: List[str]):
         """
-        Spawn a task from the branching options.
+        Register which branches should execute at runtime.
+        All possible branches already exist in the DAG (compile-time).
+        This marks which ones should actually run.
 
         Args:
-            label: Label from dynamic_spawns dict to spawn
+            branch_labels: List of function names to register for execution
         """
         if self._task_spec.dynamic_spawns is None:
-            raise RuntimeError(f"Task {self._current_task_id} is not a branching task")
+            raise RuntimeError(f"Task {self._current_task_id} is not a dynamic task")
 
-        if label not in self._task_spec.dynamic_spawns:
-            raise RuntimeError(
-                f"Task {self._current_task_id} cannot spawn branch '{label}'. "
-                f"Allowed branches: {list(self._task_spec.dynamic_spawns.keys())}"
-            )
+        for label in branch_labels:
+            if label not in self._task_spec.dynamic_spawns:
+                raise RuntimeError(
+                    f"Task {self._current_task_id} cannot register branch '{label}'. "
+                    f"Allowed branches: {list(self._task_spec.dynamic_spawns.keys())}"
+                )
+            self._registered_branches.append(label)
 
-        task_id = self._task_spec.dynamic_spawns[label]
-        self._orchestrator.handle_spawn(self._current_task_id, task_id)
+    def get_registered_branches(self) -> List[str]:
+        """Get list of branch labels that were registered"""
+        return self._registered_branches
 
 class DependencyResolver:
     def __init__(self, wf: Workflow):
@@ -116,27 +122,33 @@ class Orchestrator:
         self.sched: Optional[Scheduler] = None
         self.indegree: Dict[str, int] = {}
         self.done: Dict[str, str] = {}
+        self.blocked_branches: Dict[str, int] = {}  # task_id -> actual indegree (saved for later)
 
-    def handle_spawn(self, spawner_id: str, new_task_id: str):
+    def _register_branches_for_execution(self, ctx: ExecutionContext):
         """
-        Called when a task spawns another task at runtime.
+        Enable registered branches for execution by restoring their actual indegree.
+        Called after a dynamic task completes.
 
         Args:
-            spawner_id: Task that is spawning
-            new_task_id: Task to be spawned
+            ctx: ExecutionContext containing registered branches
         """
-        if new_task_id in self.done:
-            # Task already executed, skip
-            print(self.resolver.task_index[new_task_id], "has already been executed. Skipping")
-            return
+        registered = ctx.get_registered_branches()
+        task_spec = ctx._task_spec
 
-        # Check if task has dependencies that aren't met
-        new_task = self.resolver.task_of(new_task_id)
-        deps_met = all(dep_id in self.done for dep_id in new_task.deps)
+        for label in registered:
+            task_id = task_spec.dynamic_spawns[label]
 
-        if deps_met and self.indegree.get(new_task_id, 0) == 0:
-            # Ready to execute
-            self.sched.add_ready([new_task_id])
+            if task_id in self.done:
+                # Already executed, skip
+                continue
+
+            # Restore actual indegree (unblock the branch)
+            if task_id in self.blocked_branches:
+                self.indegree[task_id] = self.blocked_branches[task_id]
+
+                # Check if ready to execute
+                if self.indegree[task_id] == 0:
+                    self.sched.add_ready([task_id])
 
     def run(self, workflow: Workflow) -> Dict[str, str]:
         self.resolver = DependencyResolver(workflow)
@@ -145,6 +157,14 @@ class Orchestrator:
 
         self.indegree = dict(self.resolver.indegree)
         self.done = {}
+        self.blocked_branches = {}
+
+        # Block all dynamic-only tasks (infinite indegree) until registered at runtime
+        for task_id in self.resolver.dynamic_only_tasks:
+            # Save actual indegree for later restoration
+            self.blocked_branches[task_id] = self.indegree.get(task_id, 0)
+            # Block by setting to infinity
+            self.indegree[task_id] = float('inf')
 
         self.sched.add_ready(self.resolver.initial_ready())
 
@@ -172,11 +192,19 @@ class Orchestrator:
             try:
                 exec_.execute(t.func_ref, ctx)
                 self.done[tid] = "SUCCESS"
+
+                # If this is a dynamic task, register its branches for execution
+                if t.dynamic_spawns is not None:
+                    self._register_branches_for_execution(ctx)
+
             except Exception as e:
                 self.done[tid] = "FAILED"
                 raise RuntimeError(f"Task {t.func_ref} failed: {e}") from e
 
             for succ in self.resolver.successors(tid):
+                # Skip if successor has infinite indegree (blocked branch)
+                if self.indegree[succ] == float('inf'):
+                    continue
                 self.indegree[succ] -= 1
                 if self.indegree[succ] == 0:
                     self.sched.add_ready([succ])
